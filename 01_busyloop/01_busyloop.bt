@@ -1,0 +1,5 @@
+#!/usr/bin/env bpftrace
+
+uprobe:./bin/01:main.doSomething /comm == "01"/ {
+    printf("call doSomething\n");
+}

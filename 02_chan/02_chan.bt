@@ -1,0 +1,60 @@
+#!/usr/bin/env bpftrace
+#include <linux/sched.h>
+
+struct sudog {
+    uint8_t padding[24];
+    uint64_t *elem;
+}
+
+uprobe:./bin/02:runtime.chansend1 /comm == "02"/ {
+    $t = strftime("%Y-%m-%dT%H:%M:%S.%f%z", nsecs);
+
+    $task = (struct task_struct *)curtask;
+    $fs = (uint64)$task->thread.fsbase;
+    $gaddr = *(uint64 *)uptr($fs - 8);
+    // # pahole -C runtime.g ./bin/02 2>/dev/null | grep goid # parse DWARF & dump data structure layout
+    //     uint64                     goid;                 /*   152     8 */
+    $goid = *(uint64 *)uptr($gaddr + 152);
+
+    $chanptr = reg("ax");
+
+    // # pahole -C main.Value ./bin/02 2>/dev/null
+    // struct main.Value {
+    //     struct string              Name;                 /*     0    16 */
+    //     int                        Value;                /*    16     8 */
+
+    //     /* size: 24, cachelines: 1, members: 2 */
+    //     /* last cacheline: 24 bytes */
+    // };
+    $base = reg("bx");
+    $name_ptr = *($base);
+    $name = str(*($name_ptr));
+    $value_ptr = $name_ptr + 16;
+    $value = *((int64 *)($value_ptr));
+    if ($name != "") {
+        @name[$goid] = $name;
+        @value[$goid] = $value;
+        printf("%s [%d:%p] Sends name=%s, value=%d\n", $t, $goid, $chanptr, $name, $value);
+    }
+}
+
+uprobe:./bin/02:runtime.recvDirect /comm == "02"/ {
+    $t = strftime("%Y-%m-%dT%H:%M:%S.%f%z", nsecs);
+
+    $task = (struct task_struct *)curtask;
+    $fs = (uint64)$task->thread.fsbase;
+    $gaddr = *(uint64 *)uptr($fs - 8);
+    $goid = *(uint64 *)uptr($gaddr + 152);
+
+    $chanptr = reg("ax");
+
+    $sudog = (struct sudog *)reg("bx");
+    $base = $sudog->elem;
+
+    $name_ptr = *($base);
+    $name = str(*($name_ptr));
+    $value_ptr = $name_ptr + 16;
+    $value = *((int64 *)($value_ptr));
+
+    printf("%s [%d:%p] Receives name=%s, value=%d\n", $t, $goid, $chanptr, $name, $value);
+}

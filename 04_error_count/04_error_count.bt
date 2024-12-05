@@ -1,0 +1,15 @@
+#!/usr/bin/env bpftrace
+
+struct string {
+    uint64_t *str;
+    int64_t len;
+}
+
+uprobe:./bin/04:fmt.Errorf /comm == "04"/ {
+    // https://github.com/golang/go/blob/master/src/cmd/compile/abi-internal.md#function-call-argument-and-result-passing
+    // If T is a string type, interface type, or slice type, recursively register-assign V’s components (2 for strings and interfaces, 3 for slices).
+    $format = str(reg("ax"), reg("bx"));
+    printf("error: %s\n", $format);
+
+    @errors[$format] = count();
+}

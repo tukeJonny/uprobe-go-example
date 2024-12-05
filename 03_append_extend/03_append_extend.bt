@@ -1,0 +1,9 @@
+#!/usr/bin/env bpftrace
+
+uprobe:./bin/03:runtime.growslice /comm == "03"/ {
+    $ptr = reg("ax");
+    if ($ptr) {
+        $new_length = reg("bx");
+        @growslice[ustack] = max($new_length);
+    }
+}
